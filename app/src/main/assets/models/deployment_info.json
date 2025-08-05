@@ -1,0 +1,29 @@
+{
+  "model_info": {
+    "name": "Sister's Dream Assistant",
+    "base_model": "Gemma-2-2b-it",
+    "fine_tuned_on": "202+ voice samples from sister",
+    "specialization": "Speech impairment + motivational responses",
+    "file_size_gb": 1.59,
+    "format": "GGUF Q4_K_M (mobile optimized)",
+    "training_quality": "Excellent (loss: 7.638 \u2192 0.190)"
+  },
+  "android_deployment": {
+    "main_file": "sister_dream_assistant.gguf",
+    "required_files": [
+      "config.json",
+      "tokenizer files"
+    ],
+    "integration_ready": true,
+    "privacy": "100% offline and private"
+  },
+  "hackathon": {
+    "competition": "Google Gemma 3n Impact Challenge",
+    "prizes_eligible": [
+      "Unsloth Prize",
+      "Google AI Edge Prize",
+      "Main Competition"
+    ],
+    "impact": "Accessibility for speech impairment + community building"
+  }
+}
