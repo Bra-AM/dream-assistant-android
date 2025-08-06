@@ -5,43 +5,94 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Dream Assistant</title>
   <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 2rem; }
-    .btn { background: #4CAF50; color: #fff; padding: 1rem 2rem; border: none; border-radius: 8px; text-decoration: none; font-size: 1.1rem; }
-    p.instruction {
-      margin-top: 1rem;
-      font-size: 0.9rem;
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f9f9f9;
       color: #333;
-      text-align: center;  /* Center the instruction text */
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      color: #222;
+    }
+    p.lead {
+      font-size: 1.1rem;
+      margin-bottom: 1.5rem;
+      color: #555;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
       max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
+      margin: 0 auto 2rem;
+      list-style: none;
+      padding: 0;
+    }
+    .features li {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      padding: 1rem;
+      font-size: 0.95rem;
+      text-align: center;
+    }
+    .btn {
+      display: inline-block;
+      background: #4CAF50;
+      color: #fff;
+      padding: 1rem 2rem;
+      border: none;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 1.1rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transition: background 0.2s ease;
+    }
+    .btn:hover {
+      background: #45A049;
+    }
+    .instruction {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1rem;
+      max-width: 600px;
+      margin: 2rem auto 0;
+      line-height: 1.5;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      text-align: center;
+      font-size: 0.95rem;
+      color: #444;
     }
   </style>
 </head>
 <body>
   <h1>Dream Assistant</h1>
-  <p>Voice-first, on-device AI personalized for speech impairments.</p>
-  <p><strong>Key features:</strong></p>
-  <ul style="text-align:left; display:inline-block;">
+  <p class="lead">Voice-first, on-device AI personalized for speech impairments.</p>
+
+  <ul class="features">
     <li>🔒 Privacy-first & offline</li>
     <li>🗣️ Fine-tuned per user</li>
     <li>🖥️ Minimal hands-free UI</li>
     <li>📱 Runs entirely on your phone</li>
   </ul>
 
-  <p>
-    <a class="btn"
-       href="https://drive.google.com/drive/folders/1_LbEb6Gl1NIVPRtkrjV6Yvixlj8xj4cn?usp=sharing"
-       target="_blank">
-      Download APK & Models
-    </a>
-  </p>
+  <a class="btn"
+     href="https://drive.google.com/drive/folders/1_LbEb6Gl1NIVPRtkrjV6Yvixlj8xj4cn?usp=sharing"
+     target="_blank">
+    Download APK & Models
+  </a>
 
-  <p class="instruction">
-    After downloading, open the <code>.apk</code> on your Android device to install.<br>
-    If prompted, enable “Install unknown apps” for your browser or file manager.<br>
-    Once installed, launch Dream Assistant and grant Microphone & Storage permissions when requested.
-  </p>
+  <div class="instruction">
+    <p>After downloading, open the <code>.apk</code> on your Android device to install.</p>
+    <p>If prompted, enable “Install unknown apps” for your browser or file manager.</p>
+    <p>Once installed, launch Dream Assistant and grant Microphone & Storage permissions when requested.</p>
+  </div>
 </body>
 </html>
-
