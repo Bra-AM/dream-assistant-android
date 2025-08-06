@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Internal storage files -->
+    <files-path name="internal_files" path="." />
+
+    <!-- External storage for model files -->
+    <external-files-path name="external_files" path="." />
+
+    <!-- Cache directory -->
+    <cache-path name="cache_files" path="." />
+
+    <!-- External cache -->
+    <external-cache-path name="external_cache" path="." />
+
+    <!-- Downloads folder for model files -->
+    <external-path name="downloads" path="Download" />
+
+    <!-- Documents folder -->
+    <external-path name="documents" path="Documents" />
+
+    <!-- Dream Assistant specific folders -->
+    <external-files-path name="models" path="models" />
+    <external-files-path name="conversations" path="conversations" />
+</paths>

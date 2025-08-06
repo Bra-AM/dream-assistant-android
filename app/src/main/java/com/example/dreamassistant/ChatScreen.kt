@@ -1,507 +1,245 @@
 package com.example.dreamassistant
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.dreamassistant.ai.LlamaEngine
 import kotlinx.coroutines.launch
 
+/**
+ * ChatScreen - Displays messages and handles text & voice input
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen() {
-    val context = LocalContext.current
-    val viewModel = remember { ChatViewModel(context) }
-
-    val messages by viewModel.messages.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val isListening by viewModel.isListening.collectAsState()
-    val isSpeaking by viewModel.isSpeaking.collectAsState()
-    val assistantStatus by viewModel.assistantStatus.collectAsState()
-
-    var messageText by remember { mutableStateOf("") }
+fun ChatScreen(
+    llamaEngine: LlamaEngine?,
+    modifier: Modifier = Modifier,
+    viewModel: ChatViewModel = viewModel(),
+    onVoiceInput: () -> Unit      // callback from MainActivity
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
-    // Auto-scroll to bottom when new messages arrive
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(messages.size - 1)
-            }
-        }
+    // Set engine when ready
+    LaunchedEffect(llamaEngine) {
+        llamaEngine?.let { viewModel.setLlamaEngine(it) }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Enhanced Header with Model Status
-        Column(
+    Column(modifier = modifier.fillMaxSize()) {
+        // Header
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Dream Assistant 🌟",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.primary
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (llamaEngine?.isModelReady() == true)
+                    Color(0xFF4CAF50) else Color(0xFFFF9800)
             )
-
-            // Model Status Indicator
-            Text(
-                text = assistantStatus,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-
-        // Messages with Enhanced Scrolling
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            state = listState,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            items(messages) { message ->
-                ChatBubble(message = message)
-            }
-
-            // Enhanced Loading Indicator
-            if (isLoading) {
-                item {
-                    ChatBubble(
-                        message = ChatMessage.Assistant(
-                            text = "Procesando con tu modelo personalizado... 🧠",
-                            isFromRealModel = false
-                        ),
-                        isLoading = true
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = if (llamaEngine?.isModelReady() == true)
+                        "🌟 Dream Assistant Ready!"
+                    else
+                        "⏳ Cargando tu modelo personalizado...",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (llamaEngine?.isModelReady() == true) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Entrenado con tus patrones de voz únicos 💕",
+                        color = Color.White.copy(alpha = 0.9f),
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
 
-        // Enhanced Status Section
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        // Messages
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Dynamic Status Message
-            Text(
-                text = when {
-                    isSpeaking -> "🔊 Hablando contigo con tu voz personalizada..."
-                    isListening -> "🎤 Te escucho perfectamente! Mi modelo te entiende ✨"
-                    isLoading -> "🧠 Tu modelo entrenado está pensando la mejor respuesta..."
-                    else -> "💕 Presiona el micrófono para hablar con tu asistente personalizado"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-                color = when {
-                    isListening -> MaterialTheme.colorScheme.primary
-                    isSpeaking -> MaterialTheme.colorScheme.secondary
-                    isLoading -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.padding(bottom = 20.dp)
-            )
+            items(uiState.messages) { message ->
+                ChatMessageItem(message = message)
+            }
+            if (uiState.isLoading) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Tu modelo personalizado está pensando...")
+                        }
+                    }
+                }
+            }
         }
 
-        // WhatsApp-Style Enhanced Input
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Enhanced Text Input
-            OutlinedTextField(
-                value = messageText,
-                onValueChange = { messageText = it },
-                label = { Text("Escríbeme aquí... 💬") },
-                placeholder = { Text("Tu asistente personalizado te escucha...") },
-                modifier = Modifier.weight(1f),
-                enabled = !isLoading && !isListening && !isSpeaking,
-                singleLine = true,
-                shape = RoundedCornerShape(25.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                )
-            )
+        // Auto-scroll
+        LaunchedEffect(uiState.messages.size) {
+            if (uiState.messages.isNotEmpty()) {
+                scope.launch {
+                    listState.animateScrollToItem(uiState.messages.size - 1)
+                }
+            }
+        }
 
-            // Enhanced Send Button or Microphone
-            if (messageText.isNotBlank() && !isListening) {
-                // Send Button with Better Animation
-                FloatingActionButton(
-                    onClick = {
-                        viewModel.sendMessage(messageText)
-                        messageText = ""
+        // Input row: text field, mic, send
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = uiState.currentInput,
+                    onValueChange = viewModel::updateInput,
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            if (llamaEngine?.isModelReady() == true)
+                                "Escríbeme o háblame..."
+                            else
+                                "Esperando tu modelo entrenado..."
+                        )
                     },
-                    modifier = Modifier.size(56.dp),
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 6.dp,
-                        pressedElevation = 12.dp
+                    enabled = llamaEngine?.isModelReady() == true && !uiState.isLoading
+                )
+
+                Spacer(Modifier.width(8.dp))
+
+                // Mic button triggers voice input
+                IconButton(
+                    onClick = {
+                        Log.d("ChatScreen", "Mic tapped")
+                        onVoiceInput()
+                    },
+                    enabled = true  // always enabled
+                ) {
+                    Icon(
+                        Icons.Default.Mic,
+                        contentDescription = "Voice Input",
+                        tint = if (llamaEngine?.isModelReady() == true)
+                            MaterialTheme.colorScheme.primary else Color.Gray
                     )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                // Send button
+                IconButton(
+                    onClick = {
+                        Log.d("ChatScreen", "✉️ Send tapped (text='${uiState.currentInput}')")
+                        viewModel.sendMessage()
+                    },
+                    enabled = true    // temporarily always enabled for testing
                 ) {
                     Icon(
                         Icons.Default.Send,
-                        contentDescription = "Enviar mensaje a tu asistente personalizado",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
+                        contentDescription = "Send",
+                        tint = if (llamaEngine?.isModelReady() == true && uiState.currentInput.isNotBlank())
+                            MaterialTheme.colorScheme.primary
+                        else Color.Gray
                     )
                 }
-            } else {
-                // Enhanced Microphone with Better UX
-                var isPressed by remember { mutableStateOf(false) }
-                val scale by animateFloatAsState(
-                    targetValue = if (isPressed || isListening) 1.1f else 1f,
-                    animationSpec = tween(100),
-                    label = "mic_scale"
-                )
-
-                FloatingActionButton(
-                    onClick = {
-                        if (!isListening) {
-                            viewModel.startListening()
-                        } else {
-                            viewModel.stopListening()
-                        }
-                    },
-                    modifier = Modifier
-                        .size(if (isListening) 64.dp else 56.dp)
-                        .scale(scale)
-                        .pointerInput(Unit) {
-                            detectDragGestures(
-                                onDragStart = {
-                                    isPressed = true
-                                    if (!isListening) {
-                                        viewModel.startListening()
-                                    }
-                                },
-                                onDragEnd = {
-                                    isPressed = false
-                                    if (isListening) {
-                                        viewModel.stopListening()
-                                    }
-                                }
-                            ) { _, _ ->
-                                // Handle drag for WhatsApp-style slide to cancel
-                            }
-                        },
-                    containerColor = when {
-                        isListening -> MaterialTheme.colorScheme.error
-                        isPressed -> MaterialTheme.colorScheme.primaryContainer
-                        else -> MaterialTheme.colorScheme.primary
-                    },
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = if (isListening) 12.dp else 6.dp,
-                        pressedElevation = 16.dp
-                    )
-                ) {
-                    Icon(
-                        imageVector = when {
-                            isSpeaking -> Icons.Default.VolumeUp
-                            isListening -> Icons.Default.Stop
-                            else -> Icons.Default.Mic
-                        },
-                        contentDescription = when {
-                            isSpeaking -> "Tu asistente está hablando"
-                            isListening -> "Grabando tu voz - Toca para parar"
-                            else -> "Presiona para hablar con tu asistente personalizado"
-                        },
-                        tint = Color.White,
-                        modifier = Modifier.size(
-                            if (isPressed || isListening) 28.dp else 24.dp
-                        )
-                    )
-                }
-            }
-        }
-
-        // Enhanced Recording Indicator
-        if (isListening) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Enhanced Animated Dots
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    repeat(3) { index ->
-                        val scale by animateFloatAsState(
-                            targetValue = if ((System.currentTimeMillis() / 400) % 3 == index.toLong()) 1.8f else 1f,
-                            animationSpec = tween(200),
-                            label = "dot_animation_$index"
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .scale(scale)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
-                }
-
-                Text(
-                    text = "🎤 Tu modelo personalizado te está escuchando...\nToca el micrófono cuando termines",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp),
-                    textAlign = TextAlign.Center,
-                    lineHeight = 16.sp
-                )
             }
         }
     }
 }
 
+/**
+ * Renders a single chat message bubble.
+ */
 @Composable
-fun ChatBubble(
+fun ChatMessageItem(
     message: ChatMessage,
-    isLoading: Boolean = false
+    modifier: Modifier = Modifier
 ) {
-    val isUser = message is ChatMessage.User
-    val messageText = when (message) {
-        is ChatMessage.User -> message.text
-        is ChatMessage.Assistant -> message.text
-    }
+    val isUser = message.isFromSister()
+    val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    Box(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = alignment
     ) {
         Card(
-            modifier = Modifier.widthIn(max = 320.dp),
+            modifier = Modifier.widthIn(max = 300.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (isUser)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.surfaceVariant
+                containerColor = when {
+                    isUser -> MaterialTheme.colorScheme.primary
+                    message is ChatMessage.Assistant && message.isFromRealModel -> Color(0xFF4CAF50)
+                    message is ChatMessage.Assistant && message.supportLevel == ChatMessage.SupportLevel.CELEBRATORY -> Color(0xFFFF9800)
+                    message is ChatMessage.Assistant && message.isEmotionalSupport -> Color(0xFF9C27B0)
+                    message is ChatMessage.Assistant && message.isBusinessAdvice -> Color(0xFF2196F3)
+                    else -> Color(0xFFE0E0E0)
+                }
             ),
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isUser) 16.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 16.dp
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 2.dp,
-                pressedElevation = 4.dp
-            )
+            shape = MaterialTheme.shapes.medium
         ) {
-            Column {
-                if (isLoading) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = messageText,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 16.sp
-                        )
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = message.text,
+                    color = if (isUser) Color.White else Color.Black,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                // Assistant metadata
+                if (message is ChatMessage.Assistant) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (message.isFromRealModel) Text("🧠 Modelo Real", style = MaterialTheme.typography.labelSmall)
+                        when (message.supportLevel) {
+                            ChatMessage.SupportLevel.ENCOURAGING -> Text("💪", style = MaterialTheme.typography.labelSmall)
+                            ChatMessage.SupportLevel.MOTIVATIONAL -> Text("🚀", style = MaterialTheme.typography.labelSmall)
+                            ChatMessage.SupportLevel.COMFORTING -> Text("💕", style = MaterialTheme.typography.labelSmall)
+                            ChatMessage.SupportLevel.CELEBRATORY -> Text("🎉", style = MaterialTheme.typography.labelSmall)
+                            ChatMessage.SupportLevel.PRACTICAL -> Text("🔧", style = MaterialTheme.typography.labelSmall)
+                        }
+                        if (message.isBusinessAdvice) Text("💼", style = MaterialTheme.typography.labelSmall)
+                        if (message.isEmotionalSupport) Text("🤗", style = MaterialTheme.typography.labelSmall)
+                        if (message.inferenceTime > 0) Text("⚡${message.inferenceTime/1000f}s", style = MaterialTheme.typography.labelSmall)
                     }
-                } else {
-                    Text(
-                        text = messageText,
-                        modifier = Modifier.padding(16.dp),
-                        color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 16.sp,
-                        lineHeight = 22.sp
-                    )
                 }
 
-                // Enhanced Indicators Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Voice Input Indicator for User Messages
-                    if (message is ChatMessage.User && message.isVoiceInput) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Mic,
-                                contentDescription = "Mensaje de voz",
-                                tint = if (isUser) Color.White.copy(alpha = 0.7f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "Voz",
-                                fontSize = 10.sp,
-                                color = if (isUser) Color.White.copy(alpha = 0.7f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-
-                            // Show speech confidence if available
-                            if (message.speechConfidence < 1.0f) {
-                                Text(
-                                    text = "${(message.speechConfidence * 100).toInt()}%",
-                                    fontSize = 9.sp,
-                                    color = if (isUser) Color.White.copy(alpha = 0.5f)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            }
+                // User metadata
+                if (message is ChatMessage.User) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (message.isVoiceInput) {
+                            Text("🎤 Voz", style = MaterialTheme.typography.labelSmall)
+                            if (message.speechConfidence < 1f) Text("${(message.speechConfidence*100).toInt()}%", style = MaterialTheme.typography.labelSmall)
                         }
+                        Text(message.getDisplayTime(), style = MaterialTheme.typography.labelSmall)
                     }
-
-                    // Assistant Message Indicators
-                    if (message is ChatMessage.Assistant) {
-                        // Real Model Indicator
-                        if (message.isFromRealModel) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Psychology,
-                                    contentDescription = "Respuesta del modelo personalizado",
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = "Modelo Personalizado",
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        // Speaking Indicator
-                        if (message.wasSpoken) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.VolumeUp,
-                                    contentDescription = "Mensaje hablado",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = "Hablado",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-
-                        // Action Indicator
-                        if (message.hasAction && message.actionType != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.TouchApp,
-                                    contentDescription = "Acción detectada",
-                                    tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = when (message.actionType) {
-                                        "SendWhatsApp" -> "WhatsApp"
-                                        "OpenYouTube" -> "YouTube"
-                                        "CreateMeeting" -> "Reunión"
-                                        "RecordVideo" -> "Video"
-                                        "OpenCamera" -> "Cámara"
-                                        else -> "Acción"
-                                    },
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-
-                        // Support Level Indicator
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            val (icon, label, color) = when (message.supportLevel) {
-                                ChatMessage.SupportLevel.ENCOURAGING -> Triple(
-                                    Icons.Default.Favorite, "💕", MaterialTheme.colorScheme.primary
-                                )
-                                ChatMessage.SupportLevel.MOTIVATIONAL -> Triple(
-                                    Icons.Default.Star, "⭐", MaterialTheme.colorScheme.secondary
-                                )
-                                ChatMessage.SupportLevel.COMFORTING -> Triple(
-                                    Icons.Default.Healing, "🤗", MaterialTheme.colorScheme.tertiary
-                                )
-                                ChatMessage.SupportLevel.CELEBRATORY -> Triple(
-                                    Icons.Default.Celebration, "🎉", MaterialTheme.colorScheme.primary
-                                )
-                                ChatMessage.SupportLevel.PRACTICAL -> Triple(
-                                    Icons.Default.Build, "🔧", MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Text(
-                                text = label,
-                                fontSize = 10.sp,
-                                color = color.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // Timestamp
-                    Text(
-                        text = message.getDisplayTime(),
-                        fontSize = 9.sp,
-                        color = if (isUser) Color.White.copy(alpha = 0.6f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
                 }
             }
         }

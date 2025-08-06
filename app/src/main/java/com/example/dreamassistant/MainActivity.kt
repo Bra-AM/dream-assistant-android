@@ -9,261 +9,234 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.dreamassistant.ai.LlamaEngine
+import com.example.dreamassistant.speech.SpeechRecognitionService
+import com.example.dreamassistant.speech.TextToSpeechService
 import com.example.dreamassistant.ui.theme.DreamAssistantTheme
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * MainActivity for Sister's Dream Assistant
- * Handles permissions and initialization for her personalized Gemma 3n model
+ * Combines real llama.cpp model initialization with continuous voice loop
  */
 class MainActivity : ComponentActivity() {
-
     companion object {
         private const val TAG = "MainActivity"
-        private const val MICROPHONE_PERMISSION_CODE = 200
     }
 
-    // Enhanced permission handling for sister's accessibility needs
+    private val viewModel: ChatViewModel by viewModels()
+
+    // Speech & TTS services
+    private lateinit var speechService: SpeechRecognitionService
+    private lateinit var ttsService: TextToSpeechService
+
+    // Required permissions
     private val requiredPermissions = arrayOf(
-        Manifest.permission.RECORD_AUDIO,           // Essential for voice input
-        Manifest.permission.INTERNET,               // For API integrations
-        Manifest.permission.READ_CONTACTS,          // For WhatsApp integration
-        Manifest.permission.WRITE_CONTACTS,         // For contact management
-        Manifest.permission.SEND_SMS,               // For messaging features
-        Manifest.permission.CAMERA,                 // For video recording
-        Manifest.permission.READ_CALENDAR,          // For meeting creation
-        Manifest.permission.WRITE_CALENDAR          // For calendar management
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.INTERNET,
+        Manifest.permission.READ_EXTERNAL_STORAGE,
+        Manifest.permission.WRITE_EXTERNAL_STORAGE
     )
 
-    // Modern permission launcher
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        handlePermissionResults(permissions)
+    ) { perms ->
+        handlePermissionResults(perms)
     }
+
+    // LlamaEngine & ready flag
+    private lateinit var llamaEngine: LlamaEngine
+    var isModelReady by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         Log.d(TAG, "🚀 Starting Sister's Dream Assistant")
-        Log.d(TAG, "📱 Initializing app for personalized Gemma 3n model")
 
-        // Check and request all necessary permissions
+        // Initialize services
+        speechService = SpeechRecognitionService(this)
+        ttsService    = TextToSpeechService(this)
+
+        // Kick off model initialization
+        initializeLlamaEngine()
+
+        // Ask for permissions
         checkAndRequestPermissions()
 
+        // Compose UI
         setContent {
             DreamAssistantTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                        // Enhanced ChatScreen with model integration
-                        ChatScreen()
+                    Scaffold { innerPadding ->
+                        ChatScreen(
+                            llamaEngine  = if (viewModel.isModelReady) viewModel.llamaEngine else null,
+                            modifier     = Modifier.padding(innerPadding),
+                            onVoiceInput = { speechService.startListening() }
+                        )
                     }
                 }
             }
         }
 
-        // Initialize app lifecycle logging
+        // 1) Listen for sister’s speech
+        lifecycleScope.launch {
+            speechService.speechResults.collect { result ->
+                if (result is SpeechRecognitionService.SpeechResult.Success) {
+                    val userMsg = ChatMessage.createVoiceMessage(
+                        originalSpeech   = result.text,
+                        preprocessedText = result.text,
+                        confidence       = result.confidence ?: 1f,
+                        processingTime   = result.processingTime
+                    )
+                    viewModel.addMessage(userMsg)
+                    viewModel.sendMessageWithText(result.text)
+                }
+            }
+        }
+
+        // 2) Speak assistant replies
+        lifecycleScope.launch {
+            snapshotFlow { viewModel.uiState.value.messages.lastOrNull() }
+                .filterIsInstance<ChatMessage.Assistant>()
+                .collect { assistant ->
+                    ttsService.speak(assistant.text)
+                }
+        }
+
+        // 3) Loop back to listening when done
+        lifecycleScope.launch {
+            ttsService.events
+                .filter { it is TextToSpeechService.TtsEvent.UtteranceDone }
+                .collect {
+                    speechService.startListening()
+                }
+        }
+
         initializeAppLifecycle()
     }
 
-    private fun checkAndRequestPermissions() {
-        val missingPermissions = requiredPermissions.filter { permission ->
-            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (missingPermissions.isNotEmpty()) {
-            Log.d(TAG, "🔒 Requesting permissions for sister's features: ${missingPermissions.size} missing")
-
-            // Show explanation for critical permissions
-            if (missingPermissions.contains(Manifest.permission.RECORD_AUDIO)) {
-                showPermissionExplanation(
-                    "Para que pueda escuchar tu voz perfectamente y entender tus comandos 🎤",
-                    missingPermissions.toTypedArray()
-                )
-            } else {
-                permissionLauncher.launch(missingPermissions.toTypedArray())
-            }
-        } else {
-            Log.d(TAG, "✅ All permissions granted - ready for sister's voice")
-            onAllPermissionsGranted()
-        }
-    }
-
-    private fun showPermissionExplanation(message: String, permissions: Array<String>) {
-        // For sister's accessibility, we'll show a toast and request anyway
-        Toast.makeText(
-            this,
-            "Necesito algunos permisos para ser tu mejor asistente: $message",
-            Toast.LENGTH_LONG
-        ).show()
-
-        // Delay slightly to let user read the toast
+    private fun initializeLlamaEngine() {
         lifecycleScope.launch {
-            delay(1500)
-            permissionLauncher.launch(permissions)
+            try {
+                Log.d(TAG, "🧠 Initializing LlamaEngine...")
+                llamaEngine = LlamaEngine.getInstance()
+                viewModel.setLlamaEngine(llamaEngine)
+
+                if (!llamaEngine.isModelReady()) {
+                    Log.d(TAG, "🔄 Loading sister's model asynchronously...")
+                    initializeModelAsync()
+                } else {
+                    isModelReady = true
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error initializing LlamaEngine: ${e.message}")
+                showToast("Error inicializando IA: ${e.message}")
+            }
         }
     }
 
-    private fun handlePermissionResults(permissions: Map<String, Boolean>) {
-        val grantedPermissions = permissions.filterValues { it }.keys
-        val deniedPermissions = permissions.filterValues { !it }.keys
-
-        Log.d(TAG, "✅ Granted permissions: ${grantedPermissions.size}")
-        Log.d(TAG, "❌ Denied permissions: ${deniedPermissions.size}")
-
-        // Check critical permissions
-        val hasMicrophone = permissions[Manifest.permission.RECORD_AUDIO] == true
-        val hasInternet = permissions[Manifest.permission.INTERNET] == true
-
-        when {
-            hasMicrophone && hasInternet -> {
-                Log.d(TAG, "🎤 Essential permissions granted - sister can use voice features")
-                showToast("¡Perfecto! Ya puedo escuchar tu voz y ayudarte con todo 🌟")
-                onAllPermissionsGranted()
-            }
-
-            hasMicrophone && !hasInternet -> {
-                Log.d(TAG, "🎤 Microphone OK, but no internet - limited features")
-                showToast("Puedo escucharte pero tendré funciones limitadas sin internet 📶")
-                onEssentialPermissionsGranted()
-            }
-
-            !hasMicrophone && hasInternet -> {
-                Log.d(TAG, "❌ No microphone access - major limitation for sister")
-                showToast("Sin micrófono solo puedes escribirme, pero estaré aquí para ti 💕")
-                onLimitedPermissionsGranted()
-            }
-
-            else -> {
-                Log.e(TAG, "❌ Critical permissions denied")
-                showToast("Sin permisos básicos tengo funcionalidad muy limitada 😔")
-                onMinimalPermissionsGranted()
+    //change here
+    private suspend fun initializeModelAsync() {
+        // Common helper to copy an asset to internal storage if missing
+        suspend fun copyAssetIfNeeded(assetPath: String, outFile: File) {
+            if (!outFile.exists()) {
+                assets.open(assetPath).use { input ->
+                    outFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d(TAG, "✅ Copied asset $assetPath → ${outFile.absolutePath}")
             }
         }
 
-        // Handle individual permission feedback
-        if (deniedPermissions.contains(Manifest.permission.READ_CONTACTS)) {
-            Log.d(TAG, "📱 No contact access - WhatsApp features limited")
+        try {
+            showToast("Cargando modelo personalizado… ⏳")
+            // 1) Attempt to load the personalized model
+            val personalFile = File(filesDir, "sister_dream_assistant.gguf")
+            copyAssetIfNeeded("models/sister_dream_assistant.gguf", personalFile)
+
+            var result = llamaEngine.initializeModel(this@MainActivity, personalFile)
+            if (!result.isSuccess) {
+                // 2) Fallback: load the base Gemma 3n model
+                Log.w(TAG, "⚠️ Personal model load failed: ${result.exceptionOrNull()?.message}")
+                showToast("Modelo personalizado no disponible, cargando modelo base… ⏳")
+
+                val baseFile = File(filesDir, "gemma3nlu_base.gguf")
+                copyAssetIfNeeded("models/gemma3nlu_base.gguf", baseFile)
+
+                result = llamaEngine.initializeModel(this@MainActivity, baseFile)
+            }
+
+            if (result.isSuccess) {
+                isModelReady = true
+                viewModel.setLlamaEngine(llamaEngine)
+                showToast("¡Modelo listo! 🌟")
+                testModel()
+            } else {
+                Log.e(TAG, "❌ Both model loads failed: ${result.exceptionOrNull()?.message}")
+                showToast("Error cargando cualquier modelo 😔")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Exception during model init: ${e.message}")
+            showToast("Error al cargar modelo: ${e.message}")
         }
+    }
 
-        if (deniedPermissions.contains(Manifest.permission.CAMERA)) {
-            Log.d(TAG, "📹 No camera access - video features disabled")
+
+    private suspend fun testModel() {
+        try {
+            val testRes = llamaEngine.generateResponse("Hola, ¿cómo estás?")
+            if (testRes.isSuccess) {
+                showToast("Test OK: ${testRes.getOrNull()?.take(20)}...")
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun checkAndRequestPermissions() {
+        val missing = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing)
+    }
+
+    private fun handlePermissionResults(perms: Map<String, Boolean>) {
+        if (perms[Manifest.permission.RECORD_AUDIO] == true) {
+            speechService.startListening()
+        } else {
+            showToast("Permiso de audio requerido")
         }
-
-        if (deniedPermissions.contains(Manifest.permission.READ_CALENDAR)) {
-            Log.d(TAG, "📅 No calendar access - meeting features limited")
-        }
     }
 
-    private fun onAllPermissionsGranted() {
-        Log.d(TAG, "🌟 All permissions granted - full functionality available")
-        showToast("¡Listo! Todas las funciones están disponibles para ti 🚀")
-    }
-
-    private fun onEssentialPermissionsGranted() {
-        Log.d(TAG, "🎤 Essential permissions granted - core functionality available")
-        showToast("Las funciones principales están listas. Algunas características necesitarán internet 📶")
-    }
-
-    private fun onLimitedPermissionsGranted() {
-        Log.d(TAG, "📝 Limited permissions - text-only mode")
-        showToast("Modo de solo texto activado. Puedes escribirme y te ayudo igual 💕")
-    }
-
-    private fun onMinimalPermissionsGranted() {
-        Log.d(TAG, "⚠️ Minimal permissions - very limited functionality")
-        showToast("Funcionalidad básica disponible. Para más características, activa los permisos en configuración ⚙️")
-    }
-
-    private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun showToast(msg: String) {
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
     }
 
     private fun initializeAppLifecycle() {
-        Log.d(TAG, "📱 Initializing app lifecycle for sister's model")
-
-        // Monitor app lifecycle for model optimization
-        lifecycleScope.launch {
-            // Log app start metrics
-            Log.d(TAG, "⏱️ App started at: ${System.currentTimeMillis()}")
-            Log.d(TAG, "🧠 Ready to load sister's trained Gemma 3n model")
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        Log.d(TAG, "▶️ App resumed - sister's assistant ready")
-    }
-
-    override fun onPause() {
-        super.onPause()
-        Log.d(TAG, "⏸️ App paused - saving sister's conversation state")
+        Log.d(TAG, "📱 App lifecycle initialized")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "🔇 App destroyed - sister's model cleanup initiated")
-    }
-
-    // Handle back button for better UX
-    override fun onBackPressed() {
-        // For sister's accessibility, we might want to ask before closing
-        Log.d(TAG, "⬅️ Back button pressed")
-
-        // You could add a confirmation dialog here if needed
-        // For now, just use default behavior
-        super.onBackPressed()
-    }
-
-    // Legacy permission handling (fallback)
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (requestCode == MICROPHONE_PERMISSION_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "🎤 Legacy microphone permission granted")
-                showToast("¡Perfecto! Ya puedo escuchar tu voz 🎤")
-            } else {
-                Log.d(TAG, "❌ Legacy microphone permission denied")
-                showToast("Sin micrófono solo puedes escribirme, pero estaré aquí para ti 💕")
-            }
-        }
-    }
-
-    // Helper function to check if essential permissions are available
-    private fun hasEssentialPermissions(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }
-
-    // Helper function to check if all permissions are available
-    private fun hasAllPermissions(): Boolean {
-        return requiredPermissions.all { permission ->
-            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-
-    // Get permission status for analytics
-    private fun getPermissionStatus(): Map<String, Boolean> {
-        return requiredPermissions.associateWith { permission ->
-            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        }
+        ttsService.shutdown()
+        if (::llamaEngine.isInitialized) llamaEngine.cleanup()
     }
 }

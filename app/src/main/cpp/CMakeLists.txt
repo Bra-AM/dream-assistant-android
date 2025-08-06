@@ -1,74 +1,111 @@
-# CMakeLists.txt for Sister's Dream Assistant with REAL llama.cpp
 cmake_minimum_required(VERSION 3.22.1)
 
-project("dream-assistant-llama")
+# Declare the project
+project("llama-android")
 
-# C++ standard
-set(CMAKE_CXX_STANDARD 17)
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable position independent code
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Find required packages
-find_library(log-lib log)
-find_library(android-lib android)
+find_package(Threads REQUIRED)
 
-# llama.cpp configuration for Android
-set(LLAMA_STATIC ON)
-set(LLAMA_BUILD_TESTS OFF)
-set(LLAMA_BUILD_EXAMPLES OFF)
-set(LLAMA_BUILD_SERVER OFF)
-set(LLAMA_NATIVE OFF)
-set(LLAMA_LTO OFF)
+# Set llama.cpp directory
+set(LLAMA_CPP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp)
 
-# Android-specific optimizations
-if(ANDROID)
-    set(LLAMA_ANDROID ON)
-    set(LLAMA_BLAS OFF)
-    set(LLAMA_CUBLAS OFF)
-    set(LLAMA_METAL OFF)
+# Include directories - minimal set
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${LLAMA_CPP_DIR})
+include_directories(${LLAMA_CPP_DIR}/include)
 
-    # Enable optimizations for Sister's model
-    if(ANDROID_ABI STREQUAL "arm64-v8a")
-        set(LLAMA_NATIVE ON)
-        set(LLAMA_F16C ON)
-    endif()
+# Try to find the right ggml include directory
+if(EXISTS "${LLAMA_CPP_DIR}/ggml/include")
+ include_directories(${LLAMA_CPP_DIR}/ggml/include)
 endif()
 
-# Add llama.cpp subdirectory
-add_subdirectory(llama.cpp)
+if(EXISTS "${LLAMA_CPP_DIR}/ggml/src")
+ include_directories(${LLAMA_CPP_DIR}/ggml/src)
+endif()
 
-# Include directories
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp)
+if(EXISTS "${LLAMA_CPP_DIR}/ggml")
+ include_directories(${LLAMA_CPP_DIR}/ggml)
+endif()
 
-# Create the native library for Sister's model
-add_library(
-        dream-assistant-native
-        SHARED
-        llama-android.cpp
+if(EXISTS "${LLAMA_CPP_DIR}/common")
+ include_directories(${LLAMA_CPP_DIR}/common)
+endif()
+
+# Start with just our JNI wrapper - minimal approach
+set(SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/llama-android.cpp
 )
 
-# Link libraries - INCLUDING REAL LLAMA.CPP
-target_link_libraries(
-        dream-assistant-native
-        llama              # REAL llama.cpp library
-        ${log-lib}
-        ${android-lib}
+# Try to add core llama.cpp file if it exists
+if(EXISTS "${LLAMA_CPP_DIR}/src/llama.cpp")
+ list(APPEND SOURCES ${LLAMA_CPP_DIR}/src/llama.cpp)
+ message(STATUS "✅ Found: llama.cpp/src/llama.cpp")
+elseif(EXISTS "${LLAMA_CPP_DIR}/llama.cpp")
+ list(APPEND SOURCES ${LLAMA_CPP_DIR}/llama.cpp)
+ message(STATUS "✅ Found: llama.cpp/llama.cpp")
+endif()
+
+# Try to add basic ggml file
+if(EXISTS "${LLAMA_CPP_DIR}/ggml/src/ggml.c")
+ list(APPEND SOURCES ${LLAMA_CPP_DIR}/ggml/src/ggml.c)
+ message(STATUS "✅ Found: ggml/src/ggml.c")
+elseif(EXISTS "${LLAMA_CPP_DIR}/ggml.c")
+ list(APPEND SOURCES ${LLAMA_CPP_DIR}/ggml.c)
+ message(STATUS "✅ Found: ggml.c")
+endif()
+
+# Try to add common utilities if they exist
+if(EXISTS "${LLAMA_CPP_DIR}/common/common.cpp")
+ list(APPEND SOURCES ${LLAMA_CPP_DIR}/common/common.cpp)
+ message(STATUS "✅ Found: common/common.cpp")
+endif()
+
+# Essential: Check our JNI wrapper exists
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama-android.cpp")
+ message(FATAL_ERROR "❌ Missing: llama-android.cpp")
+endif()
+
+message(STATUS "🎯 Building with ${list(LENGTH SOURCES)} source files")
+
+# Create the shared library
+add_library(llama-android SHARED ${SOURCES})
+
+# Link libraries
+target_link_libraries(llama-android
+        ${CMAKE_THREAD_LIBS_INIT}
+        log
+        android
 )
 
-# Compiler flags for Android optimization
-target_compile_options(dream-assistant-native PRIVATE
-        -O3
-        -ffast-math
-        -funroll-loops
-        -DANDROID
-        -DLLAMA_ANDROID
-        -DGGUF_SUPPORT
+# Minimal compiler flags
+target_compile_options(llama-android PRIVATE
+        -O2
+        -Wall
+        -Wno-unused-function
+        -Wno-unused-variable
+        -Wno-multichar
+        -Wno-unknown-pragmas
+        -Wno-missing-field-initializers
 )
 
-# Sister's model specific optimizations
-target_compile_definitions(dream-assistant-native PRIVATE
-        SISTER_MODEL_OPTIMIZATION=1
-        GGUF_SUPPORT=1
-        GEMMA_3N_SUPPORT=1
-        LLAMA_ANDROID=1
+# Essential definitions
+target_compile_definitions(llama-android PRIVATE
+        GGML_USE_CPU=1
+        ANDROID=1
 )
+
+# Set target properties
+set_target_properties(llama-android PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        C_VISIBILITY_PRESET hidden
+)
+
+message(STATUS "🌟 Minimal llama-android library configured!")
+message(STATUS "💕 Ready for Sister's Dream Assistant!")

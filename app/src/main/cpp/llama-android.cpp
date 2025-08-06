@@ -1,317 +1,348 @@
-#include <jni.h>
-#include <string>
+#include "llama-android.h"
 #include <android/log.h>
-#include <memory>
+#include <chrono>
 #include <vector>
+#include <sstream>
+#include <iostream>
 
-// REAL llama.cpp includes
-#include "llama.cpp/llama.h"
-#include "llama.cpp/common/common.h"
+// Include llama.cpp headers
+#include "llama.h"
+#include "common.h"
 
-// Android logging
-#define TAG "SisterModelNative"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+// Utility functions implementation
+std::string jstring_to_string(JNIEnv* env, jstring jstr) {
+    if (jstr == nullptr) return "";
 
-// Sister's REAL model context with llama.cpp
-struct SisterModelContext {
-    std::string model_path;
-    bool is_loaded = false;
-    size_t model_size = 0;
+    const char* chars = env->GetStringUTFChars(jstr, nullptr);
+    std::string result(chars);
+    env->ReleaseStringUTFChars(jstr, chars);
+    return result;
+}
 
-    // REAL llama.cpp objects
-    llama_model* model = nullptr;
-    llama_context* ctx = nullptr;
+jstring string_to_jstring(JNIEnv* env, const std::string& str) {
+    return env->NewStringUTF(str.c_str());
+}
 
-    // Sister-specific parameters
-    float temperature = 0.7f;
-    float top_p = 0.9f;
-    int top_k = 40;
-    int max_tokens = 150;
+void log_android(const std::string& tag, const std::string& message) {
+    __android_log_print(ANDROID_LOG_INFO, tag.c_str(), "%s", message.c_str());
+}
 
-    // Performance tracking
-    int total_inferences = 0;
-    long total_inference_time_ms = 0;
-    int successful_inferences = 0;
-};
-
-static std::unique_ptr<SisterModelContext> g_sister_model = nullptr;
+// Sister-specific prompting for Dream Assistant
+std::string create_sister_prompt(const std::string& user_input) {
+    return "Eres el Dream Assistant, la compañera perfecta para mi hermana emprendedora. "
+           "Ella tiene dificultades del habla pero sueña con crear su plataforma digital. "
+           "Responde de manera cariñosa, motivacional y práctica. "
+           "Entiende que ella necesita apoyo emocional y técnico para lograr sus metas.\n\n"
+           "Usuario: " + user_input + "\n"
+                                      "Dream Assistant: ";
+}
 
 extern "C" {
 
-// Initialize Sister's personalized REAL model
-JNIEXPORT jboolean JNICALL
-Java_com_example_dreamassistant_ai_RealModelLoader_nativeLoadModel(
-        JNIEnv *env,
-        jobject /* this */,
-        jstring model_path
-) {
-    const char *path = env->GetStringUTFChars(model_path, 0);
+JNIEXPORT jlong JNICALL
+Java_com_dreamassistant_ai_LlamaEngine_initializeModel(JNIEnv *env, jobject thiz, jstring modelPath) {
+    log_android(LOG_TAG, "🚀 Initializing Sister's Dream Assistant Model...");
 
-    LOGI("🚀 Loading Sister's REAL Gemma 3n model: %s", path);
+    std::string path = jstring_to_string(env, modelPath);
+    log_android(LOG_TAG, "Model path: " + path);
+
+    // Create model wrapper
+    auto* wrapper = new LlamaModelWrapper();
+    wrapper->model_path = path;
 
     try {
-        // Initialize llama.cpp
-        llama_backend_init(false);
+        // Initialize llama backend
+        llama_backend_init();
+        llama_numa_init(GGML_NUMA_STRATEGY_DISABLED);
 
-        // Initialize sister's model context
-        g_sister_model = std::make_unique<SisterModelContext>();
-        g_sister_model->model_path = std::string(path);
-
-        // Check if model file exists
-        FILE *file = fopen(path, "rb");
-        if (file == nullptr) {
-            LOGE("❌ Could not open sister's GGUF model file: %s", path);
-            env->ReleaseStringUTFChars(model_path, path);
-            return JNI_FALSE;
-        }
-
-        // Get file size
-        fseek(file, 0, SEEK_END);
-        g_sister_model->model_size = ftell(file);
-        fclose(file);
-
-        LOGI("📁 Sister's GGUF model size: %.1f MB", g_sister_model->model_size / (1024.0 * 1024.0));
-
-        // REAL llama.cpp model loading
-        auto model_params = llama_model_default_params();
+        // Model parameters optimized for sister's use case
+        llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers = 0; // CPU only for Android
         model_params.use_mmap = true;
         model_params.use_mlock = false;
 
-        LOGI("🧠 Loading GGUF model with llama.cpp...");
-        g_sister_model->model = llama_load_model_from_file(path, model_params);
-
-        if (g_sister_model->model == nullptr) {
-            LOGE("❌ Failed to load sister's GGUF model with llama.cpp");
-            env->ReleaseStringUTFChars(model_path, path);
-            return JNI_FALSE;
+        // Load the model
+        wrapper->model = llama_load_model_from_file(path.c_str(), model_params);
+        if (wrapper->model == nullptr) {
+            log_android(LOG_TAG, "❌ Failed to load model");
+            delete wrapper;
+            return 0;
         }
 
-        // Create context for inference
-        auto ctx_params = llama_context_default_params();
+        // Context parameters for Dream Assistant
+        llama_context_params ctx_params = llama_context_default_params();
         ctx_params.seed = 1234;
-        ctx_params.n_ctx = 2048;
-        ctx_params.n_batch = 512;
-        ctx_params.n_threads = 4;
-        ctx_params.f16_kv = true;
+        ctx_params.n_ctx = MAX_CONTEXT_LENGTH;
+        ctx_params.n_threads = 4; // Optimize for mobile
+        ctx_params.n_threads_batch = 2;
 
-        LOGI("⚙️ Creating inference context...");
-        g_sister_model->ctx = llama_new_context_with_model(g_sister_model->model, ctx_params);
-
-        if (g_sister_model->ctx == nullptr) {
-            LOGE("❌ Failed to create llama.cpp context");
-            llama_free_model(g_sister_model->model);
-            g_sister_model->model = nullptr;
-            env->ReleaseStringUTFChars(model_path, path);
-            return JNI_FALSE;
+        // Create context
+        wrapper->ctx = llama_new_context_with_model((llama_model*)wrapper->model, ctx_params);
+        if (wrapper->ctx == nullptr) {
+            log_android(LOG_TAG, "❌ Failed to create context");
+            llama_free_model((llama_model*)wrapper->model);
+            delete wrapper;
+            return 0;
         }
 
-        g_sister_model->is_loaded = true;
+        wrapper->initialized = true;
+        wrapper->vocab_size = llama_n_vocab((llama_model*)wrapper->model);
+        wrapper->context_size = llama_n_ctx((llama_context*)wrapper->ctx);
 
-        LOGI("🎉 SUCCESS! Sister's REAL Gemma 3n model loaded with llama.cpp!");
-        LOGI("🎯 Model ready for her 202+ voice sample patterns");
-        LOGI("✨ Context size: %d, Vocab size: %d",
-             llama_n_ctx(g_sister_model->ctx),
-             llama_n_vocab(g_sister_model->model));
+        log_android(LOG_TAG, "✅ Dream Assistant Model Loaded Successfully!");
+        log_android(LOG_TAG, "📊 Vocab size: " + std::to_string(wrapper->vocab_size));
+        log_android(LOG_TAG, "📊 Context size: " + std::to_string(wrapper->context_size));
+        log_android(LOG_TAG, "💕 Sister's personalized AI companion is ready!");
 
-        env->ReleaseStringUTFChars(model_path, path);
-        return JNI_TRUE;
+        return reinterpret_cast<jlong>(wrapper);
 
     } catch (const std::exception& e) {
-        LOGE("❌ Exception loading sister's model: %s", e.what());
-        env->ReleaseStringUTFChars(model_path, path);
-        return JNI_FALSE;
+        log_android(LOG_TAG, "❌ Exception during model initialization: " + std::string(e.what()));
+        delete wrapper;
+        return 0;
     }
 }
 
-// Generate response using Sister's REAL trained model
 JNIEXPORT jstring JNICALL
-Java_com_example_dreamassistant_ai_RealModelLoader_nativeGenerateResponse(
-        JNIEnv *env,
-        jobject /* this */,
-        jstring prompt
-) {
-    if (!g_sister_model || !g_sister_model->is_loaded || !g_sister_model->ctx) {
-        LOGE("❌ Sister's REAL model not loaded");
-        return env->NewStringUTF("");
+Java_com_dreamassistant_ai_LlamaEngine_generateResponse(JNIEnv *env, jobject thiz, jlong modelPtr, jstring prompt) {
+    if (modelPtr == 0) {
+        log_android(LOG_TAG, "❌ Model not initialized");
+        return string_to_jstring(env, "Lo siento, el modelo no está inicializado. 😔");
     }
 
-    const char *input_prompt = env->GetStringUTFChars(prompt, 0);
-    LOGI("🤖 Sister's REAL model generating for: '%.30s...'", input_prompt);
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+    if (!wrapper->initialized) {
+        log_android(LOG_TAG, "❌ Model wrapper not initialized");
+        return string_to_jstring(env, "El Dream Assistant está despertando... inténtalo de nuevo. ✨");
+    }
+
+    std::string user_input = jstring_to_string(env, prompt);
+    log_android(LOG_TAG, "👤 Sister's input: " + user_input);
+
+    // Create sister-specific prompt
+    std::string full_prompt = create_sister_prompt(user_input);
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
     try {
-        std::string prompt_str(input_prompt);
+        // Tokenize the prompt
+        std::vector<llama_token> tokens;
+        tokens.resize(full_prompt.length() + 1);
+        int n_tokens = llama_tokenize(
+                (llama_model*)wrapper->model,
+                full_prompt.c_str(),
+                full_prompt.length(),
+                tokens.data(),
+                tokens.size(),
+                true, // add_special
+                true  // parse_special
+        );
+        tokens.resize(n_tokens);
 
-        // Tokenize the input prompt
-        std::vector<llama_token> tokens = llama_tokenize(g_sister_model->ctx, prompt_str, true);
+        log_android(LOG_TAG, "🔤 Tokenized " + std::to_string(n_tokens) + " tokens");
 
-        if (tokens.empty()) {
-            LOGE("❌ Failed to tokenize sister's input");
-            env->ReleaseStringUTFChars(prompt, input_prompt);
-            return env->NewStringUTF("");
-        }
-
-        LOGI("🔤 Tokenized input: %zu tokens", tokens.size());
+        // Clear previous context
+        llama_kv_cache_clear((llama_context*)wrapper->ctx);
 
         // Evaluate the prompt
-        if (llama_eval(g_sister_model->ctx, tokens.data(), tokens.size(), 0, 4) != 0) {
-            LOGE("❌ Failed to evaluate prompt with sister's model");
-            env->ReleaseStringUTFChars(prompt, input_prompt);
-            return env->NewStringUTF("");
+        if (llama_decode((llama_context*)wrapper->ctx, llama_batch_get_one(tokens.data(), n_tokens)) != 0) {
+            log_android(LOG_TAG, "❌ Failed to evaluate prompt");
+            return string_to_jstring(env, "Disculpa, tuve un problema procesando tu mensaje. 😅");
         }
 
-        // Generate response tokens
+        // Generate response
         std::string response = "";
-        std::vector<llama_token> response_tokens;
+        int max_tokens = 150; // Balanced for mobile performance
 
-        for (int i = 0; i < g_sister_model->max_tokens; i++) {
-            // Sample next token
-            llama_token next_token = llama_sample_token_greedy(g_sister_model->ctx, nullptr);
+        for (int i = 0; i < max_tokens; i++) {
+            // Get logits and sample next token
+            float* logits = llama_get_logits((llama_context*)wrapper->ctx);
+
+            // Sample with Dream Assistant personality parameters
+            llama_token next_token = llama_sample_token_greedy(
+                    (llama_context*)wrapper->ctx,
+                    nullptr
+            );
 
             // Check for end of sequence
-            if (next_token == llama_token_eos(g_sister_model->model)) {
-                LOGI("🏁 End of sequence reached at token %d", i);
+            if (llama_token_is_eog((llama_model*)wrapper->model, next_token)) {
                 break;
             }
 
-            response_tokens.push_back(next_token);
+            // Convert token to string
+            char token_str[256];
+            int token_len = llama_token_to_piece(
+                    (llama_model*)wrapper->model,
+                    next_token,
+                    token_str,
+                    sizeof(token_str),
+                    0,
+                    true
+            );
 
-            // Convert token to text
-            std::string token_str = llama_token_to_piece(g_sister_model->ctx, next_token);
-            response += token_str;
+            if (token_len > 0) {
+                response.append(token_str, token_len);
+            }
 
             // Evaluate the new token
-            if (llama_eval(g_sister_model->ctx, &next_token, 1, tokens.size() + i, 4) != 0) {
-                LOGE("❌ Failed to evaluate next token");
+            if (llama_decode((llama_context*)wrapper->ctx, llama_batch_get_one(&next_token, 1)) != 0) {
+                log_android(LOG_TAG, "❌ Failed to evaluate token");
                 break;
             }
 
-            // Check for natural stopping points
-            if (token_str.find("<end_of_turn>") != std::string::npos) {
-                LOGI("🛑 Natural stop detected at token %d", i);
+            // Stop if we detect natural conversation ending
+            if (response.find(".") != std::string::npos && response.length() > 50) {
                 break;
             }
         }
-
-        // Clean up the response
-        response = cleanSisterResponse(response);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        wrapper->last_inference_time = duration.count() / 1000.0f;
 
-        // Update statistics
-        g_sister_model->total_inferences++;
-        g_sister_model->total_inference_time_ms += duration.count();
-        if (!response.empty()) {
-            g_sister_model->successful_inferences++;
+        // Clean up response
+        if (response.empty()) {
+            response = "¡Hola! Soy tu Dream Assistant. ¿En qué te puedo ayudar hoy? 😊";
         }
 
-        LOGI("✅ Sister's REAL model generated (%ld ms): '%.50s...'",
-             duration.count(), response.c_str());
+        log_android(LOG_TAG, "🤖 Dream Assistant response: " + response);
+        log_android(LOG_TAG, "⚡ Generation time: " + std::to_string(wrapper->last_inference_time) + "s");
 
-        env->ReleaseStringUTFChars(prompt, input_prompt);
-        return env->NewStringUTF(response.c_str());
+        return string_to_jstring(env, response);
 
     } catch (const std::exception& e) {
-        LOGE("❌ Exception during REAL inference: %s", e.what());
-        env->ReleaseStringUTFChars(prompt, input_prompt);
-        return env->NewStringUTF("");
+        log_android(LOG_TAG, "❌ Exception during generation: " + std::string(e.what()));
+        return string_to_jstring(env, "Ups, tuve un pequeño problema. ¡Pero estoy aquí para ti! 💪");
     }
 }
 
-// Helper function to clean sister's response
-std::string cleanSisterResponse(const std::string& raw_response) {
-    std::string cleaned = raw_response;
-
-    // Remove special tokens
-    size_t pos = cleaned.find("<end_of_turn>");
-    if (pos != std::string::npos) {
-        cleaned = cleaned.substr(0, pos);
-    }
-
-    pos = cleaned.find("<start_of_turn>model");
-    if (pos != std::string::npos) {
-        cleaned = cleaned.substr(pos + 19); // Skip "<start_of_turn>model"
-    }
-
-    // Trim whitespace
-    cleaned.erase(0, cleaned.find_first_not_of(" \t\n\r"));
-    cleaned.erase(cleaned.find_last_not_of(" \t\n\r") + 1);
-
-    return cleaned;
-}
-
-// Check if REAL model is loaded
 JNIEXPORT jboolean JNICALL
-Java_com_example_dreamassistant_ai_RealModelLoader_nativeIsModelLoaded(
-        JNIEnv *env,
-        jobject /* this */
-) {
-    return (g_sister_model &&
-            g_sister_model->is_loaded &&
-            g_sister_model->model != nullptr &&
-            g_sister_model->ctx != nullptr) ? JNI_TRUE : JNI_FALSE;
+Java_com_dreamassistant_ai_LlamaEngine_isModelLoaded(JNIEnv *env, jobject thiz, jlong modelPtr) {
+    if (modelPtr == 0) return JNI_FALSE;
+
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+    return wrapper->initialized ? JNI_TRUE : JNI_FALSE;
 }
 
-// Get REAL model info
-JNIEXPORT jstring JNICALL
-Java_com_example_dreamassistant_ai_RealModelLoader_nativeGetModelInfo(
-        JNIEnv *env,
-        jobject /* this */
-) {
-    if (!g_sister_model || !g_sister_model->is_loaded) {
-        return env->NewStringUTF("Sister's REAL model not loaded");
+JNIEXPORT void JNICALL
+Java_com_dreamassistant_ai_LlamaEngine_freeModel(JNIEnv *env, jobject thiz, jlong modelPtr) {
+    if (modelPtr == 0) return;
+
+    log_android(LOG_TAG, "🧹 Cleaning up Dream Assistant model...");
+
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+
+    if (wrapper->ctx) {
+        llama_free((llama_context*)wrapper->ctx);
     }
 
-    char info[1024];
-    double avg_time = g_sister_model->total_inferences > 0 ?
-                      (double)g_sister_model->total_inference_time_ms / g_sister_model->total_inferences : 0.0;
+    if (wrapper->model) {
+        llama_free_model((llama_model*)wrapper->model);
+    }
 
-    snprintf(info, sizeof(info),
-             "Sister's REAL Gemma 3n Model (llama.cpp)\n"
-             "Size: %.1f MB\n"
-             "Path: %s\n"
-             "Context: %d tokens\n"
-             "Vocab: %d tokens\n"
-             "Inferences: %d\n"
-             "Success rate: %.1f%%\n"
-             "Avg time: %.1f ms\n"
-             "Status: Ready for her voice! 🎯",
-             g_sister_model->model_size / (1024.0 * 1024.0),
-             g_sister_model->model_path.c_str(),
-             g_sister_model->ctx ? llama_n_ctx(g_sister_model->ctx) : 0,
-             g_sister_model->model ? llama_n_vocab(g_sister_model->model) : 0,
-             g_sister_model->total_inferences,
-             g_sister_model->total_inferences > 0 ?
-             (double)g_sister_model->successful_inferences * 100.0 / g_sister_model->total_inferences : 0.0,
-             avg_time
+    llama_backend_free();
+
+    delete wrapper;
+    log_android(LOG_TAG, "✅ Dream Assistant model cleaned up");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_dreamassistant_ai_LlamaEngine_getModelInfo(JNIEnv *env, jobject thiz, jlong modelPtr) {
+    if (modelPtr == 0) {
+        return string_to_jstring(env, "Model not loaded");
+    }
+
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+    if (!wrapper->initialized) {
+        return string_to_jstring(env, "Model not initialized");
+    }
+
+    std::ostringstream info;
+    info << "Dream Assistant Model Info:\n";
+    info << "- Specialized for: Sister with speech impairment\n";
+    info << "- Vocab size: " << wrapper->vocab_size << "\n";
+    info << "- Context size: " << wrapper->context_size << "\n";
+    info << "- Model path: " << wrapper->model_path << "\n";
+    info << "- Status: Ready to help! 💕";
+
+    return string_to_jstring(env, info.str());
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_dreamassistant_ai_LlamaEngine_getInferenceTime(JNIEnv *env, jobject thiz, jlong modelPtr) {
+    if (modelPtr == 0) return -1.0f;
+
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+    return wrapper->last_inference_time;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_dreamassistant_ai_LlamaEngine_getTokenCount(JNIEnv *env, jobject thiz, jlong modelPtr, jstring text) {
+    if (modelPtr == 0) return -1;
+
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+    if (!wrapper->initialized) return -1;
+
+    std::string input = jstring_to_string(env, text);
+
+    std::vector<llama_token> tokens;
+    tokens.resize(input.length() + 1);
+
+    int n_tokens = llama_tokenize(
+            (llama_model*)wrapper->model,
+            input.c_str(),
+            input.length(),
+            tokens.data(),
+            tokens.size(),
+            true,
+            true
     );
 
-    return env->NewStringUTF(info);
+    return n_tokens;
 }
 
-// Cleanup REAL model
-JNIEXPORT void JNICALL
-Java_com_example_dreamassistant_ai_RealModelLoader_nativeCleanup(
-        JNIEnv *env,
-        jobject /* this */
-) {
-    LOGI("🧹 Cleaning up sister's REAL model");
-    if (g_sister_model) {
-        if (g_sister_model->ctx) {
-            llama_free(g_sister_model->ctx);
-            g_sister_model->ctx = nullptr;
-        }
-        if (g_sister_model->model) {
-            llama_free_model(g_sister_model->model);
-            g_sister_model->model = nullptr;
-        }
-        g_sister_model.reset();
+JNIEXPORT jstring JNICALL
+Java_com_dreamassistant_ai_LlamaEngine_tokenizeText(JNIEnv *env, jobject thiz, jlong modelPtr, jstring text) {
+    if (modelPtr == 0) {
+        return string_to_jstring(env, "Model not loaded");
     }
-    llama_backend_free();
+
+    auto* wrapper = reinterpret_cast<LlamaModelWrapper*>(modelPtr);
+    if (!wrapper->initialized) {
+        return string_to_jstring(env, "Model not initialized");
+    }
+
+    std::string input = jstring_to_string(env, text);
+
+    std::vector<llama_token> tokens;
+    tokens.resize(input.length() + 1);
+
+    int n_tokens = llama_tokenize(
+            (llama_model*)wrapper->model,
+            input.c_str(),
+            input.length(),
+            tokens.data(),
+            tokens.size(),
+            true,
+            true
+    );
+
+    std::ostringstream result;
+    result << "Tokens (" << n_tokens << "): ";
+    for (int i = 0; i < n_tokens; i++) {
+        char token_str[256];
+        llama_token_to_piece(
+                (llama_model*)wrapper->model,
+                tokens[i],
+                token_str,
+                sizeof(token_str),
+                0,
+                true
+        );
+        result << "[" << tokens[i] << "]" << token_str << " ";
+    }
+
+    return string_to_jstring(env, result.str());
 }
 
 } // extern "C"

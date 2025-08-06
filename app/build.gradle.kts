@@ -14,25 +14,36 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        buildConfigField("String", "GOOGLE_AI_API_KEY", "\"${project.findProperty("GOOGLE_AI_API_KEY") ?: ""}\"")
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
 
-        // CRITICAL: Enable NDK for llama.cpp
+        // TEMPORARILY COMMENTED OUT - Native library configuration
+        /*
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
 
-        // External native build for llama.cpp
         externalNativeBuild {
             cmake {
-                cppFlags += listOf("-std=c++17", "-frtti", "-fexceptions")
-                arguments += listOf("-DANDROID_STL=c++_shared", "-DLLAMA_ANDROID=ON")
+                cppFlags += listOf(
+                    "-std=c++11",
+                    "-O3",
+                    "-ffast-math",
+                    "-funroll-loops",
+                    "-DGGML_USE_CPU",
+                    "-DANDROID",
+                    "-D__ANDROID_API__=24"
+                )
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DCMAKE_BUILD_TYPE=Release"
+                )
             }
         }
+        */
     }
 
     buildTypes {
@@ -42,14 +53,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            isDebuggable = false
-            isShrinkResources = false
         }
-
         debug {
-            isDebuggable = true
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            isDebuggable = true
         }
     }
 
@@ -60,118 +67,86 @@ android {
 
     kotlinOptions {
         jvmTarget = "1.8"
-        freeCompilerArgs += listOf(
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
-        )
     }
 
     buildFeatures {
         compose = true
-        buildConfig = true
-        viewBinding = false
-        dataBinding = false
     }
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
     }
 
-    // CRITICAL: Handle large GGUF model files
-    androidResources {
-        noCompress += listOf("gguf", "bin", "tflite", "json", "model")
-    }
-
-    // Handle native libraries and model files
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
-            excludes += "/META-INF/gradle/incremental.annotation.processors"
-
-            // Handle potential conflicts with ML libraries
-            pickFirsts += "**/libc++_shared.so"
-            pickFirsts += "**/libjsc.so"
-            pickFirsts += "**/libllama.so"
-            pickFirsts += "**/libllama-android.so"
         }
+
+        // TEMPORARILY COMMENTED OUT
+        /*
         jniLibs {
             useLegacyPackaging = true
         }
+        */
     }
 
-    // Configure CMake for llama.cpp
+    // TEMPORARILY COMMENTED OUT - External native build
+    /*
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
     }
+    */
 
-    // FIXED: Replace deprecated dexOptions
-    // Gradle handles dex optimization automatically now
+    // TEMPORARILY COMMENTED OUT - Splits configuration
+    /*
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+    */
 }
 
 dependencies {
-    // ===== CORE ANDROID =====
+    // Using your existing libs references
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-
-    // ===== JETPACK COMPOSE =====
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation("androidx.compose.material:material-icons-extended:1.5.4")
 
-    // ===== VIEWMODEL & LIFECYCLE =====
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
+    // Additional Compose dependencies (using direct versions since not in your libs)
+    implementation("androidx.compose.ui:ui:1.5.1")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.5.1")
+    implementation("androidx.compose.material3:material3:1.1.1")
+    implementation("androidx.compose.material:material-icons-extended:1.5.1")
+    implementation("androidx.activity:activity-compose:1.8.0")
 
-    // ===== COROUTINES =====
+    // Navigation for multiple screens
+    implementation("androidx.navigation:navigation-compose:2.7.1")
+
+    // ViewModel and LiveData for state management
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")
+
+    // Coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
-    // ===== REMOVED: Non-existent llama library =====
-    // REMOVED: implementation("com.github.kherud:llama:2.2.0")
-    // We'll use our own JNI implementation instead
-
-    // JSON processing for model configuration and tokenizers
-    implementation("com.google.code.gson:gson:2.10.1")
-
-    // File operations for custom model loading
-    implementation("commons-io:commons-io:2.15.1")
-
-    // ===== AUDIO & SPEECH (For sister's voice input) =====
-    implementation("androidx.media:media:1.7.0")
-
-    // ===== PERMISSIONS =====
-    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
-    implementation("androidx.activity:activity-ktx:1.8.2")
-
-    // ===== NAVIGATION =====
-    implementation("androidx.navigation:navigation-compose:2.7.5")
-
-    // ===== BACKUP: Google AI (Keep for potential fallback) =====
-    implementation("com.google.ai.client.generativeai:generativeai:0.7.0")
-
-    // ===== PERFORMANCE MONITORING =====
-    implementation("androidx.tracing:tracing:1.2.0")
-
-    // ===== TESTING =====
+    // Testing dependencies using your libs
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
-    testImplementation("org.mockito:mockito-core:5.7.0")
-
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
-    androidTestImplementation("androidx.compose.ui:ui-test-manifest")
-
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    debugImplementation("androidx.compose.ui:ui-tooling")
 }
