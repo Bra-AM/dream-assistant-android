@@ -2,7 +2,6 @@
 
 A private, offline-first, voice-driven chat assistant designed to empower people with speech impairments. Fine-tuned on “sister\_dream\_assistant.gguf” using Gemma 3n and Unsloth, the app runs entirely on device—no cloud needed—preserving user privacy and accessibility.
 
-![App Screenshot](docs/screenshot.png)
 
 ## ❗ The Problem
 
@@ -85,4 +84,4 @@ To keep the repo lightweight, the `.gguf` files are not tracked in Git. You can 
 
 ## 📝 License
 
-MIT © Your Name
+MIT © Brady
