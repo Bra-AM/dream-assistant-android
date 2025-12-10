@@ -93,7 +93,3 @@ To keep the repo lightweight, the `.gguf` files are not tracked in Git. You can 
 * **Seamless Fallback**: Automatically reverts to the base Gemma 3n model if the personalized file fails to load.
 * **Hands-Free UI**: Minimal Jetpack Compose interface with a single mic button and automatic listen–speak loop.
 * **Extendable Architecture**: Natively supports audio, text, and images for future multimodal enhancements.
-
-## 📝 License
-
-MIT © Brady
