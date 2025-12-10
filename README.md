@@ -1,5 +1,10 @@
 # Dream Assistant – Gemma 3n Impact Challenge
 
+A private, offline-first, voice-driven chat assistant designed to empower people with speech impairments. Fine-tuned on “sister\_dream\_assistant.gguf” using Gemma 3n and Unsloth, the app runs entirely on device—no cloud needed—preserving user privacy and accessibility.
+
+Visit site: https://bra-am.github.io/dream-assistant-android/
+
+
 **License:** This repository, including code and write-up, is released under
 the **Creative Commons Attribution 4.0 International (CC BY 4.0)** license.
 
@@ -8,10 +13,6 @@ If you use this work, please cite:
 Brady Ali Medina (2025). Dream Assistant: Fine-tuning Gemma 3n with Unsloth for speech accessibility.
 GitHub: https://github.com/Bra-AM/dream-assistant-android/
 License: CC BY 4.0
-
-A private, offline-first, voice-driven chat assistant designed to empower people with speech impairments. Fine-tuned on “sister\_dream\_assistant.gguf” using Gemma 3n and Unsloth, the app runs entirely on device—no cloud needed—preserving user privacy and accessibility.
-
-Visit site: https://bra-am.github.io/dream-assistant-android/
 
 ## ❗ The Problem
 
