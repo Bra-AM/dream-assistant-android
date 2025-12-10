@@ -12,6 +12,7 @@ If you use this work, please cite:
 
 Brady Ali Medina (2025). Dream Assistant: Fine-tuning Gemma 3n with Unsloth for speech accessibility.
 GitHub: https://github.com/Bra-AM/dream-assistant-android/
+
 License: CC BY 4.0
 
 ## ❗ The Problem
