@@ -1,4 +1,4 @@
-# Dream Assistant – Gemma 3n Impact Challenge (Unsloth Prize Winner)
+# Dream Assistant – Gemma 3n Impact Challenge
 
 **License:** This repository, including code and write-up, is released under
 the **Creative Commons Attribution 4.0 International (CC BY 4.0)** license.
