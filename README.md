@@ -1,6 +1,6 @@
 # Dream Assistant – Gemma 3n Impact Challenge
 
-A private, offline-first, voice-driven chat assistant designed to empower people with speech impairments. Fine-tuned on “sister\_dream\_assistant.gguf” using Gemma 3n and Unsloth, the app runs entirely on device—no cloud needed—preserving user privacy and accessibility.
+A private, offline-first, voice-driven chat assistant designed to empower people with speech impairments. Fine-tuned on “sister\_dream\_assistant.gguf” using Gemma 3n and Unsloth, the app runs entirely on device, no cloud needed, preserving user privacy and accessibility.
 
 Visit site: https://bra-am.github.io/dream-assistant-android/
 
@@ -15,11 +15,11 @@ GitHub: https://github.com/Bra-AM/dream-assistant-android/
 
 License: CC BY 4.0
 
-## ❗ The Problem
+## The Problem
 
 Imagine wanting to share your thoughts but feeling misunderstood every time you speak. Many people with speech impairments face this daily—voice assistants that ignore their words or garble their messages. It’s frustrating, isolating, and undermines confidence—especially when technology, meant to help, simply doesn’t hear them.
 
-## 🌟 Vision
+## Vision
 
 Dream Assistant is built to help individuals with speech impairments communicate effortlessly. It enables users to:
 
@@ -30,7 +30,7 @@ Dream Assistant is built to help individuals with speech impairments communicate
 
 Each user has unique goals—my sister uses it to grow her business by uploading promotional videos and sending client messages, while others might focus on everyday communication, journaling, or learning tools. Through personalization, each user gets a model trained on their own voice patterns, tailored to their unique needs—whether it’s articulation differences, accent variations, communication objectives, or entrepreneurial tasks—making technology truly accessible.
 
-## 💡 Why Gemma 3n for Speech Impairment?
+##  Why Gemma 3n for Speech Impairment?
 
 * **On-Device Performance**: Gemma 3n’s efficient architecture lets a 4B-parameter model run with a 2B footprint, enabling real-time inference on most smartphones.
 * **Privacy & Independence**: All audio and text data stay on the user’s device—critical for sensitive health or personal data. No internet means reliable use in remote or low-connectivity areas.
@@ -47,7 +47,7 @@ This project demonstrates how private, personalized AI can transform accessibili
 
 In the long term, this pattern can be repeated easily: collect a few minutes of speech from any individual with an impairment, fine-tune offline, and deploy a custom assistant that truly understands their unique patterns.
 
-## 🔧 How It Works
+##  How It Works
 
 1. **Initialize**: On first run, the app copies both `sister_dream_assistant.gguf` and `gemma3nlu_base.gguf` from `assets/models/` into internal storage.
 2. **Load & Fallback**: Attempts to load the personalized model; on failure, transparently falls back to the base Gemma 3n model.
@@ -58,7 +58,7 @@ In the long term, this pattern can be repeated easily: collect a few minutes of 
    * **Speak**: `TextToSpeechService` vocalizes responses, then automatically restarts listening.
 4. **UI**: Minimal Jetpack Compose interface with a single mic button and message bubbles—no typing required for core tasks.
 
-## 📥 Install & Run
+##  Install & Run
 
 1. **Clone**:
 
@@ -82,11 +82,11 @@ In the long term, this pattern can be repeated easily: collect a few minutes of 
    ```
 4. **Grant Permissions** on first launch: Microphone & Storage.
 
-## 📄 Releases & Models
+##  Releases & Models
 
 To keep the repo lightweight, the `.gguf` files are not tracked in Git. You can download them from our **GitHub Release v1.0** under **Assets**. See the [Releases page](https://github.com/YOUR_USERNAME/dream-assistant-android/releases).
 
-## 🚀 Key Features
+##  Key Features
 
 * **Privacy-First**: All inference and audio synthesis run offline—no user data leaves the device.
 * **Personalization Template**: Easily swap in any `.gguf` model trained via Unsloth to adapt for different voices, accents, or impairment needs.
