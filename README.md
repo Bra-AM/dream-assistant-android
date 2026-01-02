@@ -37,7 +37,7 @@ Each user has unique goals—my sister uses it to grow her business by uploading
 * **Personalization**: Fine-tuning with Unsloth allows small-data adaptation. With just \~200 audio samples, we teach the model to understand a unique speech pattern, making it ideal for various speech impairments.
 * **Multimodal Potential**: Gemma 3n natively supports audio, text, and images, opening doors for future features like lip-reading, gesture recognition, or visual prompts.
 
-## 🚀 Mission & Impact
+##  Mission & Impact
 
 This project demonstrates how private, personalized AI can transform accessibility:
 
